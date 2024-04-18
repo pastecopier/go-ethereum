@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 )
@@ -34,6 +33,7 @@ func init() {
 }
 
 type call2Tracer struct {
+	noopTracer
 	addressesTouched []common.Address
 	interrupt        atomic.Bool // Atomic flag to signal execution interruption
 	reason           error       // Textual reason for the interruption
@@ -41,18 +41,12 @@ type call2Tracer struct {
 
 // newCall2Tracer returns a native go tracer which tracks
 // call frames of a tx, and implements vm.EVMLogger.
-func newCallTracer2(ctx *tracers.Context, _ json.RawMessage) (*tracers.Tracer, error) {
+func newCallTracer2(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
 	t, err := newCall2TracerObject(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &tracers.Tracer{
-		Hooks: &tracing.Hooks{
-			OnEnter: t.OnEnter,
-		},
-		GetResult: t.GetResult,
-		Stop:      t.Stop,
-	}, nil
+	return t, nil
 }
 
 func newCall2TracerObject(ctx *tracers.Context) (*call2Tracer, error) {
@@ -62,8 +56,8 @@ func newCall2TracerObject(ctx *tracers.Context) (*call2Tracer, error) {
 }
 
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
-func (t *call2Tracer) OnEnter(depth int, typ byte, _ common.Address, to common.Address, _ []byte, _ uint64, _ *big.Int) {
-	if !(vm.OpCode(typ) == vm.DELEGATECALL || vm.OpCode(typ) == vm.CALL) {
+func (t *call2Tracer) CaptureEnter(typ vm.OpCode, _ common.Address, to common.Address, _ []byte, _ uint64, _ *big.Int) {
+	if !(typ == vm.DELEGATECALL || typ == vm.CALL) {
 		return
 	}
 	t.addressesTouched = append(t.addressesTouched, to)
